@@ -65,7 +65,14 @@ async def listen_for_data():
     print("Listening for incoming Zigbee events...")
 
     def attribute_updated(device, cluster, attribute, value):
-        print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
+        if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
+            temperature = value / 100
+            print(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
+        elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
+            humidity = value / 100
+            print(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
+        else:
+            print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
     def device_joined(device):
         print(f"🎉 Device joined: {device.ieee}")
