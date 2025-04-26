@@ -1,125 +1,76 @@
-import serial
-import time
+import asyncio
+import argparse
+from zigpy.application import ControllerApplication
+from bellows.zigbee.application import ControllerApplication as BellowsApplication
+from bellows.zigbee.util import random_extended_pan_id, random_pan_id
 
+# Configuration variables
+DEVICE_PATH = '/dev/ttyUSB0'
+CHANNEL = 15
+NETWORK_KEY = [0x01] * 16
 
-def initialize_zigbee_coordinator(serial_port):
-    """
-    Initialize the Zigbee coordinator for communication.
-    """
-    print("Initializing Zigbee Coordinator...")
-    ser = serial.Serial(serial_port, baudrate=115200, timeout=1)
-    ser.write(b'AT+START\r\n')  # Initialize Zigbee coordinator
-    response = ser.readline().decode().strip()
-    print("Coordinator Response:", response)
-    return ser
+async def pair_device():
+    config = {
+        'device': {
+            'path': DEVICE_PATH,
+        },
+        'network': {
+            'channel': CHANNEL,
+            'pan_id': random_pan_id(),
+            'extended_pan_id': random_extended_pan_id(),
+            'network_key': NETWORK_KEY,
+        },
+    }
 
+    print("Starting ZBT-1 and entering pairing mode...")
+    app = await BellowsApplication.new(config)
+    await app.startup(auto_form=True)
 
-def enable_pairing(serial_connection):
-    """
-    Put the Zigbee coordinator in pairing mode.
-    """
-    print("Enabling pairing mode...")
-    serial_connection.write(b'AT+PERMITJOIN:60\r\n')  # Allow pairing for 60 seconds
-    response = serial_connection.readline().decode().strip()
-    print("Pairing Mode Response:", response)
+    print("ZBT-1 is now in pairing mode. Activate pairing on your SNZB-02D sensor.")
+    await asyncio.sleep(60)
 
+    print("Pairing mode has ended.")
+    await app.shutdown()
 
-def wait_for_device(serial_connection):
-    """
-    Wait for a device to pair and return its device ID.
-    """
-    print("Waiting for a device to pair...")
-    while True:
-        device_info = serial_connection.readline().decode().strip()
-        if device_info:
-            print("Paired Device Info:", device_info)
-            # Assume the device info contains the Device ID (e.g., 0x1234)
-            device_id = parse_device_id(device_info)
-            return device_id
+async def listen_for_data():
+    config = {
+        'device': {
+            'path': DEVICE_PATH,
+        },
+        'network': {
+            'channel': CHANNEL,
+            'network_key': NETWORK_KEY,
+        },
+    }
 
+    print("Connecting to ZBT-1 to listen for data...")
+    app = await BellowsApplication.new(config)
+    await app.startup(auto_form=False)
 
-def parse_device_id(device_info):
-    """
-    Extract the Device ID from the pairing message.
-    """
-    # Assuming the device info contains the device ID in a standard format
-    # Modify this function as per the actual response format of your Zigbee coordinator
-    return device_info.split(",")[0]  # Example parsing logic
-
-
-def read_temperature(serial_connection, device_id):
-    """
-    Read the temperature attribute from the paired sensor.
-    """
-    print("Reading temperature...")
-    command = f'AT+READATTR:{device_id},0x0402,0x0000\r\n'  # Read temperature attribute
-    serial_connection.write(command.encode())
-    while True:
-        response = serial_connection.readline().decode().strip()
-        if response:
-            print("Temperature Response:", response)
-            return parse_attribute_value(response)
-
-
-def read_humidity(serial_connection, device_id):
-    """
-    Read the humidity attribute from the paired sensor.
-    """
-    print("Reading humidity...")
-    command = f'AT+READATTR:{device_id},0x0405,0x0000\r\n'  # Read humidity attribute
-    serial_connection.write(command.encode())
-    while True:
-        response = serial_connection.readline().decode().strip()
-        if response:
-            print("Humidity Response:", response)
-            return parse_attribute_value(response)
-
-
-def parse_attribute_value(response):
-    """
-    Parse the attribute value from the Zigbee response.
-    """
-    # Assuming the response contains the attribute value in a standard format
-    # Modify this function as per the actual response format of your Zigbee coordinator
-    return float(response.split(":")[1]) / 100.0  # Example parsing logic
+    print("Listening for incoming Zigbee messages...")
+    try:
+        while True:
+            message = await app.raw_receive()
+            print(f"Received message: {message}")
+    except KeyboardInterrupt:
+        print("Exiting...")
+    finally:
+        await app.shutdown()
 
 
 def main():
-    # Replace with your serial port
-    # In MacOS
-    # serial_port = '/dev/tty.usbserial-1A1230'
+    parser = argparse.ArgumentParser(description="ZBT-1 CLI tool for pairing and data listening.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # In Ubuntu
-    serial_port = '/dev/ttyUSB0'
+    subparsers.add_parser("pair", help="Put ZBT-1 into pairing mode.")
+    subparsers.add_parser("listen", help="Listen for incoming temperature and humidity data.")
 
-    try:
-        # Step 1: Initialize Zigbee Coordinator
-        ser = initialize_zigbee_coordinator(serial_port)
+    args = parser.parse_args()
 
-        # Step 2: Enable Pairing Mode
-        enable_pairing(ser)
-
-        # Step 3: Wait for Device to Pair
-        device_id = wait_for_device(ser)
-        print(f"Paired Device ID: {device_id}")
-
-        # Step 4: Read Sensor Data
-        while True:
-            temperature = read_temperature(ser, device_id)
-            print(f"Temperature: {temperature} °C")
-
-            humidity = read_humidity(ser, device_id)
-            print(f"Humidity: {humidity} %")
-
-            time.sleep(5)  # Poll every 5 seconds
-
-    except Exception as e:
-        print("Error:", e)
-    finally:
-        print("Closing serial connection.")
-        if 'ser' in locals() and ser.is_open:
-            ser.close()
-
+    if args.command == "pair":
+        asyncio.run(pair_device())
+    elif args.command == "listen":
+        asyncio.run(listen_for_data())
 
 if __name__ == "__main__":
     main()

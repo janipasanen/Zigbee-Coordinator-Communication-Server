@@ -22,4 +22,4 @@ source ZigbeeCoordinatorCommunicationServer/bin/activate
 #pip install --user pyserial
 
 # after activiting the venv run 
-pip install pyserial
+pip install pyserial zigpy bellows
