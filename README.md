@@ -8,9 +8,12 @@ Used for pairing with devices and fetching data.
 
 python3 -m venv myenv
 
+python3 -m venv ZigbeeCoordinatorCommunicationServer
+pip install --user pyserial
+
 
 ## activate venv
 
 source myenv/bin/activate
 
-python3 -m venv ZigbeeCoordinatorCommunicationServer
+source ZigbeeCoordinatorCommunicationServer/bin/activate
