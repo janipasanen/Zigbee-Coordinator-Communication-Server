@@ -86,7 +86,11 @@ def parse_attribute_value(response):
 
 def main():
     # Replace with your serial port
-    serial_port = '/dev/tty.usbserial-1A1230'
+    # In MacOS
+    # serial_port = '/dev/tty.usbserial-1A1230'
+
+    # In Ubuntu
+    serial_port = '/dev/ttyUSB0'
 
     try:
         # Step 1: Initialize Zigbee Coordinator
