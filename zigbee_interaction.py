@@ -65,26 +65,11 @@ async def listen_for_data():
     await app.connect()
     await app.initialize(auto_form=False)
 
-    print("Listening for incoming Zigbee attribute reports...")
-
-    def attribute_updated(device, cluster, attribute, value):
-        if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
-            temperature = value / 100  # value is in centi-degrees
-            print(f"🌡️ Temperature: {temperature:.1f} °C (from device {device.ieee})")
-        elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
-            humidity = value / 100  # value is in centi-percent
-            print(f"💧 Humidity: {humidity:.1f} % (from device {device.ieee})")
-        else:
-            print(f"Other attribute updated: cluster=0x{cluster.cluster_id:04X} attr={attribute} value={value}")
-
-    # Register our callback
-    app.add_listener(
-        type("Listener", (object,), {"attribute_updated": attribute_updated})()
-    )
-
+    print("Listening for incoming Zigbee messages...")
     try:
-        # Stay alive forever
-        await asyncio.Event().wait()
+        while True:
+            message = await app.raw_receive()
+            print(f"Received message: {message}")
     except KeyboardInterrupt:
         print("Exiting...")
     finally:
