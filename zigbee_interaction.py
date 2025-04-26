@@ -54,15 +54,13 @@ async def listen_for_data():
         'device': {
             'path': DEVICE_PATH,
         },
-        'network': {
-            'channel': CHANNEL,
-           # 'network_key': NETWORK_KEY,
-        },
     }
 
     print("Connecting to ZBT-1 to listen for data...")
-    app = await BellowsApplication.new(config)
-    await app.startup(auto_form=False)
+    app = BellowsApplication(config)
+
+    await app.connect()
+    await app.initialize(auto_form=False)
 
     print("Listening for incoming Zigbee messages...")
     try:
