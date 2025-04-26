@@ -51,7 +51,6 @@ async def pair_device():
     print("Pairing mode has ended.")
     await app.shutdown()
 
-
 async def listen_for_data():
     config = {
         'device': {
@@ -65,17 +64,21 @@ async def listen_for_data():
     await app.connect()
     await app.initialize(auto_form=False)
 
-    print("Listening for incoming Zigbee messages...")
+    print("Listening for incoming Zigbee attribute reports...")
+
+    def attribute_updated(device, cluster, attribute, value):
+        print(f"Device {device.ieee}: Cluster {cluster.cluster_id} Attribute {attribute} Value {value}")
+
+    app.add_listener(
+        type("Listener", (object,), {"attribute_updated": attribute_updated})()
+    )
+
     try:
-        while True:
-            message = await app.raw_receive()
-            print(f"Received message: {message}")
+        await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Exiting...")
     finally:
         await app.shutdown()
-
-
 
 def main():
     parser = argparse.ArgumentParser(description="ZBT-1 CLI tool for pairing and data listening.")
