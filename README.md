@@ -23,3 +23,6 @@ source ZigbeeCoordinatorCommunicationServer/bin/activate
 
 # after activiting the venv run 
 pip install pyserial zigpy bellows
+
+python3 zigbee_interaction.py pair
+python3 zigbee_interaction.py listen
