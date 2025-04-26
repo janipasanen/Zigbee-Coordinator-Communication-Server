@@ -46,12 +46,17 @@ async def pair_device():
     print("Pairing mode has ended.")
     await app.shutdown()
 
+
 async def discover_sleepy_devices(app):
-    #print("Starting sleepy device discovery...")
+    print("Starting sleepy device discovery...")
     network = app.devices
 
+    print("Current devices known by coordinator:")
     for nwk, device in network.items():
-        print(f"NWK: 0x{nwk:04X}, IEEE: {str(device.ieee)}")
+        ieee_str = str(device.ieee) if device.ieee else "<unknown>"
+        print(f"NWK: 0x{nwk:04X}, IEEE: {ieee_str}")
+
+    for nwk, device in network.items():
         if device.ieee is None:
             try:
                 print(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
