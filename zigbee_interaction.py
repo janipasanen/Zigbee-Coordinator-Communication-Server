@@ -64,13 +64,27 @@ async def listen_for_data():
     await app.connect()
     await app.initialize(auto_form=False)
 
-    print("Listening for incoming Zigbee attribute reports...")
+    print("Listening for incoming Zigbee events...")
 
     def attribute_updated(device, cluster, attribute, value):
-        print(f"Device {device.ieee}: Cluster {cluster.cluster_id} Attribute {attribute} Value {value}")
+        print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
+
+    def device_joined(device):
+        print(f"🎉 Device joined: {device.ieee}")
+
+    def device_initialized(device):
+        print(f"✅ Device initialized: {device.ieee}")
 
     app.add_listener(
-        type("Listener", (object,), {"attribute_updated": attribute_updated})()
+        type(
+            "Listener",
+            (object,),
+            {
+                "attribute_updated": attribute_updated,
+                "device_joined": device_joined,
+                "device_initialized": device_initialized,
+            },
+        )()
     )
 
     try:
