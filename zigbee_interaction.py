@@ -1,8 +1,5 @@
 import asyncio
 import argparse
-import os
-import random
-from zigpy.application import ControllerApplication
 from bellows.zigbee.application import ControllerApplication as BellowsApplication
 
 
@@ -49,6 +46,18 @@ async def pair_device():
     print("Pairing mode has ended.")
     await app.shutdown()
 
+async def discover_sleepy_devices(app):
+    print("Starting sleepy device discovery...")
+    network = app.devices
+
+    for nwk, device in network.items():
+        if device.ieee is None:
+            try:
+                print(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
+                await app.zdo.request_simple_desc(nwk, 1)
+            except Exception as e:
+                print(f"Failed to request descriptor from 0x{nwk:04X}: {e}")
+
 async def listen_for_data():
     config = {
         'device': {
@@ -93,6 +102,7 @@ async def listen_for_data():
     )
 
     try:
+        await discover_sleepy_devices(app)
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Exiting...")
