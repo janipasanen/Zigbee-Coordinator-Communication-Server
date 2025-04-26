@@ -47,10 +47,11 @@ async def pair_device():
     await app.shutdown()
 
 async def discover_sleepy_devices(app):
-    print("Starting sleepy device discovery...")
+    #print("Starting sleepy device discovery...")
     network = app.devices
 
     for nwk, device in network.items():
+        print(f"NWK: 0x{nwk:04X}, IEEE: {device.ieee}")
         if device.ieee is None:
             try:
                 print(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
