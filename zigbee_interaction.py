@@ -51,7 +51,7 @@ async def discover_sleepy_devices(app):
     network = app.devices
 
     for nwk, device in network.items():
-        print(f"NWK: 0x{nwk:04X}, IEEE: {device.ieee}")
+        print(f"NWK: 0x{nwk:04X}, IEEE: {str(device.ieee)}")
         if device.ieee is None:
             try:
                 print(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
