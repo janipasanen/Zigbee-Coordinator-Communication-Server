@@ -12,7 +12,10 @@ import random
 # Linux devie path /dev/ttyUSB0
 DEVICE_PATH = '/dev/ttyUSB0'
 CHANNEL = 15
-#NETWORK_KEY = [0x01] * 16
+
+# Zigbee Cluster IDs for Temperature and Humidity
+TEMPERATURE_CLUSTER_ID = 0x0402
+HUMIDITY_CLUSTER_ID = 0x0405
 
 async def pair_device():
     config = {
@@ -62,15 +65,31 @@ async def listen_for_data():
     await app.connect()
     await app.initialize(auto_form=False)
 
-    print("Listening for incoming Zigbee messages...")
+    print("Listening for incoming Zigbee attribute reports...")
+
+    def attribute_updated(device, cluster, attribute, value):
+        if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
+            temperature = value / 100  # value is in centi-degrees
+            print(f"🌡️ Temperature: {temperature:.1f} °C (from device {device.ieee})")
+        elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
+            humidity = value / 100  # value is in centi-percent
+            print(f"💧 Humidity: {humidity:.1f} % (from device {device.ieee})")
+        else:
+            print(f"Other attribute updated: cluster=0x{cluster.cluster_id:04X} attr={attribute} value={value}")
+
+    # Register our callback
+    app.add_listener(
+        type("Listener", (object,), {"attribute_updated": attribute_updated})()
+    )
+
     try:
-        while True:
-            message = await app.raw_receive()
-            print(f"Received message: {message}")
+        # Stay alive forever
+        await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Exiting...")
     finally:
         await app.shutdown()
+
 
 
 def main():
