@@ -1,9 +1,10 @@
 import asyncio
 import argparse
-from zigpy.application import ControllerApplication
-from bellows.zigbee.application import ControllerApplication as BellowsApplication
 import os
 import random
+from zigpy.application import ControllerApplication
+from bellows.zigbee.application import ControllerApplication as BellowsApplication
+
 
 # Configuration variables
 # MacOS device path: /dev/cu.usbserial-1A1230
@@ -26,10 +27,7 @@ async def pair_device():
 
     print("Starting ZBT-1 and initializing...")
 
-    # Step 1: Create application instance
     app = BellowsApplication(config)
-
-    # Step 2: Connect manually (open serial port)
     await app.connect()
 
     try:
@@ -40,7 +38,7 @@ async def pair_device():
         print(f"Could not form network (maybe already exists?): {e}")
 
     print("Starting the application...")
-    await app.initialize(auto_form=False)  # Initialize AFTER forming
+    await app.initialize(auto_form=False)
 
     print("Permitting joins for 60 seconds...")
     await app.permit(time_s=60)
@@ -99,7 +97,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("pair", help="Put ZBT-1 into pairing mode.")
-    subparsers.add_parser("listen", help="Listen for incoming temperature and humidity data.")
+    subparsers.add_parser("listen", help="Listen for incoming Zigbee messages.")
 
     args = parser.parse_args()
 
