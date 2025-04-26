@@ -58,6 +58,11 @@ async def discover_sleepy_devices(app):
             except Exception as e:
                 print(f"Failed to request descriptor from 0x{nwk:04X}: {e}")
 
+async def periodic_discover(app):
+    while True:
+        await discover_sleepy_devices(app)
+        await asyncio.sleep(60)  # Repeat every 60 seconds
+
 async def listen_for_data():
     config = {
         'device': {
@@ -102,7 +107,7 @@ async def listen_for_data():
     )
 
     try:
-        await discover_sleepy_devices(app)
+        asyncio.create_task(periodic_discover(app))
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Exiting...")
