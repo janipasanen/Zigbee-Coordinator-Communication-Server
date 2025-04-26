@@ -53,8 +53,13 @@ async def discover_sleepy_devices(app):
 
     print("Current devices known by coordinator:")
     for nwk, device in network.items():
+        if isinstance(nwk, int):
+            nwk_str = f"0x{nwk:04X}"
+        else:
+            nwk_str = str(nwk)
+
         ieee_str = str(device.ieee) if device.ieee else "<unknown>"
-        print(f"NWK: 0x{nwk:04X}, IEEE: {ieee_str}")
+        print(f"NWK: {nwk_str}, IEEE: {ieee_str}")
 
     for nwk, device in network.items():
         if device.ieee is None:
