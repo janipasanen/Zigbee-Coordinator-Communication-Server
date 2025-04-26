@@ -8,7 +8,7 @@ import random
 # Configuration variables
 DEVICE_PATH = '/dev/ttyUSB0'
 CHANNEL = 15
-NETWORK_KEY = [0x01] * 16
+#NETWORK_KEY = [0x01] * 16
 
 async def pair_device():
     config = {
@@ -19,7 +19,6 @@ async def pair_device():
             'channel': CHANNEL,
             'pan_id': random.randint(0x0000, 0xFFFE),
             'extended_pan_id': ':'.join(f'{b:02X}' for b in os.urandom(8)),
-            'network_key': NETWORK_KEY,
         },
     }
 
