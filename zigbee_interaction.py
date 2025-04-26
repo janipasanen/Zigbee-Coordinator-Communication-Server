@@ -6,6 +6,10 @@ import os
 import random
 
 # Configuration variables
+# MacOS device path: /dev/cu.usbserial-1A1230
+#DEVICE_PATH = '/dev/cu.usbserial-1A1230'
+
+# Linux devie path /dev/ttyUSB0
 DEVICE_PATH = '/dev/ttyUSB0'
 CHANNEL = 15
 #NETWORK_KEY = [0x01] * 16
@@ -22,16 +26,18 @@ async def pair_device():
     # Step 1: Create application instance
     app = BellowsApplication(config)
 
-    # Step 2: Connect manually (do not call .startup yet)
+    # Step 2: Connect manually (open serial port)
     await app.connect()
 
-    if not app.state.network_address:
-        print("No existing network. Forming a new Zigbee network...")
+    try:
+        print("Trying to form a new Zigbee network...")
         await app.form_network()
         print("Network formed successfully!")
+    except Exception as e:
+        print(f"Could not form network (maybe already exists?): {e}")
 
     print("Starting the application...")
-    await app.initialize(auto_form=False)  # Instead of startup()
+    await app.initialize(auto_form=False)  # Initialize AFTER forming
 
     print("Permitting joins for 60 seconds...")
     await app.permit(time_s=60)
@@ -42,6 +48,7 @@ async def pair_device():
     print("Pairing mode has ended.")
     await app.shutdown()
 
+
 async def listen_for_data():
     config = {
         'device': {
@@ -49,7 +56,7 @@ async def listen_for_data():
         },
         'network': {
             'channel': CHANNEL,
-            'network_key': NETWORK_KEY,
+           # 'network_key': NETWORK_KEY,
         },
     }
 
