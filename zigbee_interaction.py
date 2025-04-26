@@ -18,13 +18,20 @@ async def pair_device():
     }
 
     print("Starting ZBT-1 and initializing...")
-    app = await BellowsApplication.new(config)
-    await app.startup(auto_form=False)
+
+    # Step 1: Create application instance
+    app = BellowsApplication(config)
+
+    # Step 2: Connect manually (do not call .startup yet)
+    await app.connect()
 
     if not app.state.network_address:
         print("No existing network. Forming a new Zigbee network...")
         await app.form_network()
         print("Network formed successfully!")
+
+    print("Starting the application...")
+    await app.initialize(auto_form=False)  # Instead of startup()
 
     print("Permitting joins for 60 seconds...")
     await app.permit(time_s=60)
