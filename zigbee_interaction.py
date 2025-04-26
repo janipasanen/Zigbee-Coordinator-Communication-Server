@@ -15,16 +15,19 @@ async def pair_device():
         'device': {
             'path': DEVICE_PATH,
         },
-        'network': {
-            'channel': CHANNEL,
-            'pan_id': random.randint(0x0000, 0xFFFE),
-            'extended_pan_id': ':'.join(f'{b:02X}' for b in os.urandom(8)),
-        },
     }
 
-    print("Starting ZBT-1 and entering pairing mode...")
+    print("Starting ZBT-1 and initializing...")
     app = await BellowsApplication.new(config)
-    await app.startup(auto_form=True)
+    await app.startup(auto_form=False)
+
+    if not app.state.network_address:
+        print("No existing network. Forming a new Zigbee network...")
+        await app.form_network()
+        print("Network formed successfully!")
+
+    print("Permitting joins for 60 seconds...")
+    await app.permit(time_s=60)
 
     print("ZBT-1 is now in pairing mode. Activate pairing on your SNZB-02D sensor.")
     await asyncio.sleep(60)
