@@ -2,7 +2,8 @@ import asyncio
 import argparse
 from zigpy.application import ControllerApplication
 from bellows.zigbee.application import ControllerApplication as BellowsApplication
-from bellows.zigbee.util import random_extended_pan_id, random_pan_id
+import os
+import random
 
 # Configuration variables
 DEVICE_PATH = '/dev/ttyUSB0'
@@ -16,8 +17,8 @@ async def pair_device():
         },
         'network': {
             'channel': CHANNEL,
-            'pan_id': random_pan_id(),
-            'extended_pan_id': random_extended_pan_id(),
+            'pan_id': random.randint(0x0000, 0xFFFE),
+            'extended_pan_id': os.urandom(8),
             'network_key': NETWORK_KEY,
         },
     }
