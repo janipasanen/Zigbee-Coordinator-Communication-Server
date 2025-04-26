@@ -48,7 +48,7 @@ async def pair_device():
 
 
 async def discover_sleepy_devices(app):
-    print("Starting sleepy device discovery...")
+    #print("Starting sleepy device discovery...")
     network = app.devices
 
     print("Current devices known by coordinator:")
