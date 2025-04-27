@@ -101,23 +101,25 @@ async def configure_reporting(device):
         await temperature_cluster.bind()
         await humidity_cluster.bind()
 
+        # Correct way: arguments in order (no keywords)
         await temperature_cluster.configure_reporting(
-            temperature_cluster.attributes_by_name['measured_value'].id,
-            min_report_interval=30,
-            max_report_interval=600,
-            reportable_change=50
+            0x0000,  # Attribute ID for measured_value
+            30,      # Minimum reporting interval (seconds)
+            600,     # Maximum reporting interval (seconds)
+            50       # Reportable change
         )
 
         await humidity_cluster.configure_reporting(
-            humidity_cluster.attributes_by_name['measured_value'].id,
-            min_report_interval=30,
-            max_report_interval=600,
-            reportable_change=100
+            0x0000,  # Attribute ID for measured_value
+            30,      # Minimum reporting interval (seconds)
+            600,     # Maximum reporting interval (seconds)
+            100      # Reportable change
         )
 
         print(f"✅ Configured reporting for device {device.ieee}")
     except Exception as e:
         print(f"❌ Failed to configure reporting for {device.ieee}: {e}")
+
 
 async def pair_device():
     config = {
