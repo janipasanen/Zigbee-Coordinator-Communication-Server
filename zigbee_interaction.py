@@ -102,16 +102,16 @@ async def configure_reporting(device):
         await humidity_cluster.bind()
 
         await temperature_cluster.configure_reporting(
-            attribute=0x0000,
-            minimum_reporting_interval=30,
-            maximum_reporting_interval=600,
+            temperature_cluster.attributes_by_name['measured_value'].id,
+            min_report_interval=30,
+            max_report_interval=600,
             reportable_change=50
         )
 
         await humidity_cluster.configure_reporting(
-            attribute=0x0000,
-            minimum_reporting_interval=30,
-            maximum_reporting_interval=600,
+            humidity_cluster.attributes_by_name['measured_value'].id,
+            min_report_interval=30,
+            max_report_interval=600,
             reportable_change=100
         )
 
