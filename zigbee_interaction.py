@@ -1,5 +1,9 @@
 import asyncio
 import argparse
+import sqlite3
+import os
+from datetime import datetime, timedelta
+import aiohttp
 from bellows.zigbee.application import ControllerApplication as BellowsApplication
 
 
@@ -9,11 +13,89 @@ from bellows.zigbee.application import ControllerApplication as BellowsApplicati
 
 # Linux devie path /dev/ttyUSB0
 DEVICE_PATH = '/dev/ttyUSB0'
+DATABASE_FILE = 'sensor_data.db'
+#TODO: - Update with your actual API endpoint
+API_ENDPOINT = 'https://example.com'
 CHANNEL = 15
 
 # Zigbee Cluster IDs for Temperature and Humidity
 TEMPERATURE_CLUSTER_ID = 0x0402
 HUMIDITY_CLUSTER_ID = 0x0405
+
+def initialize_database():
+    """Create the database and table if it doesn't exist."""
+    if not os.path.exists(DATABASE_FILE):
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS sensor_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_ieee TEXT,
+                device_name TEXT,
+                temperature REAL,
+                humidity REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        print("✅ Database initialized.")
+
+def store_reading(device_ieee, device_name, temperature=None, humidity=None):
+    conn = sqlite3.connect(DATABASE_FILE)
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO sensor_readings (device_ieee, device_name, temperature, humidity)
+        VALUES (?, ?, ?, ?)
+    ''', (device_ieee, device_name, temperature, humidity))
+    conn.commit()
+    conn.close()
+
+async def send_recent_data_to_api():
+    while True:
+        await asyncio.sleep(4 * 60 * 60)
+
+        print("📤 Preparing to send last 4 hours of data to API...")
+
+        conn = sqlite3.connect(DATABASE_FILE)
+        c = conn.cursor()
+
+        four_hours_ago = datetime.utcnow() - timedelta(hours=4)
+        c.execute('''
+            SELECT device_ieee, device_name, temperature, humidity, timestamp
+            FROM sensor_readings
+            WHERE timestamp >= ?
+        ''', (four_hours_ago,))
+        rows = c.fetchall()
+        conn.close()
+
+        data = []
+        for row in rows:
+            record = {
+                'device_ieee': row[0],
+                'device_name': row[1],
+                'temperature': row[2],
+                'humidity': row[3],
+                'timestamp': row[4]
+            }
+            data.append(record)
+
+        if data:
+            payload = {
+                'readings': data,
+                'batch_sent_at': datetime.utcnow().isoformat()
+            }
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.post(API_ENDPOINT, json=payload) as response:
+                        if response.status == 200:
+                            print("✅ Successfully sent data to API.")
+                        else:
+                            print(f"❌ Failed to send data. HTTP {response.status}")
+                except Exception as e:
+                    print(f"❌ Exception during API POST: {e}")
+        else:
+            print("ℹ️ No data to send.")
 
 async def pair_device():
     config = {
@@ -89,16 +171,18 @@ async def listen_for_data():
 
     print("Listening for incoming Zigbee events...")
 
-    # 🔵 THIS function must be inside listen_for_data()
     def make_listener():
         class Listener:
             def attribute_updated(self, device, cluster, attribute, value):
+                device_name = device.model if hasattr(device, 'model') else "Unknown"
                 if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
                     temperature = value / 100
                     print(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
+                    store_reading(str(device.ieee), device_name, temperature=temperature)
                 elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
                     humidity = value / 100
                     print(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
+                    store_reading(str(device.ieee), device_name, humidity=humidity)
                 else:
                     print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
@@ -115,11 +199,11 @@ async def listen_for_data():
 
         return Listener()
 
-    # 🔵 Now we call it here:
     app.add_listener(make_listener())
 
     try:
         asyncio.create_task(periodic_discover(app))
+        asyncio.create_task(send_recent_data_to_api())
         await asyncio.Event().wait()
     except KeyboardInterrupt:
         print("Exiting...")
@@ -135,6 +219,8 @@ def main():
 
     args = parser.parse_args()
 
+    initialize_database()
+
     if args.command == "pair":
         asyncio.run(pair_device())
     elif args.command == "listen":
@@ -142,3 +228,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
