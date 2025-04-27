@@ -89,33 +89,34 @@ async def listen_for_data():
 
     print("Listening for incoming Zigbee events...")
 
-    def attribute_updated(device, cluster, attribute, value):
-        if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
-            temperature = value / 100
-            print(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
-        elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
-            humidity = value / 100
-            print(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
-        else:
-            print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
+    # 🔵 THIS function must be inside listen_for_data()
+    def make_listener():
+        class Listener:
+            def attribute_updated(self, device, cluster, attribute, value):
+                if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
+                    temperature = value / 100
+                    print(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
+                elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
+                    humidity = value / 100
+                    print(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
+                else:
+                    print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
-    def device_joined(device):
-        print(f"🎉 Device joined: {device.ieee}")
+            def device_joined(self, device):
+                print(f"🎉 Device joined: {device.ieee}")
 
-    def device_initialized(device):
-        print(f"✅ Device initialized: {device.ieee}")
+            def device_initialized(self, device):
+                print(f"✅ Device initialized: {device.ieee}")
 
-    app.add_listener(
-        type(
-            "Listener",
-            (object,),
-            {
-                "attribute_updated": attribute_updated,
-                "device_joined": device_joined,
-                "device_initialized": device_initialized,
-            },
-        )()
-    )
+            def __getattr__(self, name):
+                def catch_all(*args, **kwargs):
+                    print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
+                return catch_all
+
+        return Listener()
+
+    # 🔵 Now we call it here:
+    app.add_listener(make_listener())
 
     try:
         asyncio.create_task(periodic_discover(app))
