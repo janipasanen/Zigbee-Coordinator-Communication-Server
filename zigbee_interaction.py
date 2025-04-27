@@ -95,30 +95,39 @@ async def send_recent_data_to_api():
 
 async def configure_reporting(device):
     try:
-        temperature_cluster = device.endpoints[1].in_clusters[TEMPERATURE_CLUSTER_ID]
-        humidity_cluster = device.endpoints[1].in_clusters[HUMIDITY_CLUSTER_ID]
+        endpoint = device.endpoints.get(1)
+        if endpoint is None:
+            print(f"⚠️ No endpoint 1 on device {device.ieee}")
+            return
 
-        await temperature_cluster.bind()
-        await humidity_cluster.bind()
+        if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
+            temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
+            await temp_cluster.bind()
+            await temp_cluster.configure_reporting(
+                0x0000,  # measured_value attribute
+                10,  # min reporting interval (10 seconds)
+                300,  # max reporting interval (5 minutes)
+                5  # reportable change (0.05°C * 100 = 5)
+            )
+            print(f"✅ Configured temperature reporting for {device.ieee}")
+        else:
+            print(f"⚠️ Temperature cluster not found on {device.ieee}")
 
-        # Correct way: arguments in order (no keywords)
-        await temperature_cluster.configure_reporting(
-            0x0000,  # Attribute ID for measured_value
-            30,      # Minimum reporting interval (seconds)
-            600,     # Maximum reporting interval (seconds)
-            50       # Reportable change
-        )
+        if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
+            hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
+            await hum_cluster.bind()
+            await hum_cluster.configure_reporting(
+                0x0000,  # measured_value attribute
+                10,  # min reporting interval (10 seconds)
+                300,  # max reporting interval (5 minutes)
+                100  # reportable change (1% humidity * 100 = 100)
+            )
+            print(f"✅ Configured humidity reporting for {device.ieee}")
+        else:
+            print(f"⚠️ Humidity cluster not found on {device.ieee}")
 
-        await humidity_cluster.configure_reporting(
-            0x0000,  # Attribute ID for measured_value
-            30,      # Minimum reporting interval (seconds)
-            600,     # Maximum reporting interval (seconds)
-            100      # Reportable change
-        )
-
-        print(f"✅ Configured reporting for device {device.ieee}")
     except Exception as e:
-        print(f"❌ Failed to configure reporting for {device.ieee}: {e}")
+        print(f"❌ Failed smart_configure_reporting for {device.ieee}: {e}")
 
 
 async def pair_device():
