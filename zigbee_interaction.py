@@ -207,9 +207,9 @@ async def listen_for_data(send_to_api=False):
                 else:
                     print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
-            async def device_initialized(self, device):
+            def device_initialized(self, device):
                 print(f"✅ Device initialized: {device.ieee}")
-                await configure_reporting(device)
+                asyncio.create_task(configure_reporting(device))
 
             def device_joined(self, device):
                 print(f"🎉 Device joined: {device.ieee}")
