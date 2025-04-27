@@ -217,9 +217,36 @@ async def listen_for_data(send_to_api=False):
                     print(f"🔄 Trying to configure reporting for {device.ieee} after receiving attribute update...")
                     asyncio.create_task(configure_and_mark(device))
 
-            def device_initialized(self, device):
+            async def device_initialized(self, device):
                 print(f"✅ Device initialized: {device.ieee}")
-                asyncio.create_task(configure_and_mark(device))
+
+                try:
+                    endpoint = device.endpoints.get(1)
+                    if endpoint is None:
+                        print(f"⚠️ No endpoint 1 on device {device.ieee}")
+                        return
+
+                    # Try to read temperature
+                    if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
+                        temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
+                        res = await temp_cluster.read_attributes(['measured_value'])
+                        print(f"🌡️ Initial temperature read for {device.ieee}: {res}")
+                    else:
+                        print(f"⚠️ Temperature cluster not found on {device.ieee}")
+
+                    # Try to read humidity
+                    if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
+                        hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
+                        res = await hum_cluster.read_attributes(['measured_value'])
+                        print(f"💧 Initial humidity read for {device.ieee}: {res}")
+                    else:
+                        print(f"⚠️ Humidity cluster not found on {device.ieee}")
+
+                    # Now configure reporting
+                    await configure_reporting(device)
+
+                except Exception as e:
+                    print(f"❌ Error during device initialization {device.ieee}: {e}")
 
             def device_joined(self, device):
                 print(f"🎉 Device joined: {device.ieee}")
