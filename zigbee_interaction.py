@@ -164,7 +164,7 @@ async def pair_device():
 async def discover_sleepy_devices(app):
     network = app.devices
 
-    print("Current devices known by coordinator:")
+    #print("Current devices known by coordinator:")
     for nwk, device in network.items():
         if isinstance(nwk, int):
             nwk_str = f"0x{nwk:04X}"
@@ -173,7 +173,7 @@ async def discover_sleepy_devices(app):
 
         ieee_str = str(device.ieee) if device.ieee else "<unknown>"
         device_name = device.model if hasattr(device, 'model') else "Unknown"
-        print(f"NWK: {nwk_str}, IEEE: {ieee_str}, Model: {device_name}")
+        #print(f"NWK: {nwk_str}, IEEE: {ieee_str}, Model: {device_name}")
 
     for nwk, device in network.items():
         if device.ieee is None:
