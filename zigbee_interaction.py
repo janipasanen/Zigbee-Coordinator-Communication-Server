@@ -194,6 +194,9 @@ async def listen_for_data(send_to_api=False):
 
     print("Listening for incoming Zigbee events...")
 
+    # Track devices we've successfully configured
+    successfully_configured = set()
+
     def make_listener():
         class Listener:
             def attribute_updated(self, device, cluster, attribute, value):
@@ -209,9 +212,14 @@ async def listen_for_data(send_to_api=False):
                 else:
                     print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
+                # 🔵 If we haven't configured reporting yet, try now
+                if device.ieee not in successfully_configured:
+                    print(f"🔄 Trying to configure reporting for {device.ieee} after receiving attribute update...")
+                    asyncio.create_task(configure_and_mark(device))
+
             def device_initialized(self, device):
                 print(f"✅ Device initialized: {device.ieee}")
-                asyncio.create_task(configure_reporting(device))
+                asyncio.create_task(configure_and_mark(device))
 
             def device_joined(self, device):
                 print(f"🎉 Device joined: {device.ieee}")
@@ -219,9 +227,22 @@ async def listen_for_data(send_to_api=False):
             def __getattr__(self, name):
                 def catch_all(*args, **kwargs):
                     print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
+                    device = args[0] if args else None
+                    if device and hasattr(device, 'ieee'):
+                        # 🔵 Try to configure again if a sleepy device wakes up and talks
+                        if device.ieee not in successfully_configured:
+                            print(f"🔄 Trying to configure reporting for {device.ieee} after receiving catch-all event...")
+                            asyncio.create_task(configure_and_mark(device))
                 return catch_all
 
         return Listener()
+
+    async def configure_and_mark(device):
+        try:
+            await configure_reporting(device)
+            successfully_configured.add(device.ieee)
+        except Exception as e:
+            print(f"❌ Exception during configure_reporting for {device.ieee}: {e}")
 
     app.add_listener(make_listener())
 
