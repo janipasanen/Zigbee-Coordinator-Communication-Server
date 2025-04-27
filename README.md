@@ -26,3 +26,6 @@ pip install pyserial zigpy bellows
 
 python3 zigbee_interaction.py pair
 python3 zigbee_interaction.py listen
+
+# To send sensor data to api add the sendToApi flag
+python3 zigbee_interaction.py listen --sendToApi
