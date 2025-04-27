@@ -226,7 +226,7 @@ async def listen_for_data(send_to_api=False):
 
             def __getattr__(self, name):
                 def catch_all(*args, **kwargs):
-                    print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
+                    #print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
                     device = args[0] if args else None
                     if device and hasattr(device, 'ieee'):
                         # 🔵 Try to configure again if a sleepy device wakes up and talks
