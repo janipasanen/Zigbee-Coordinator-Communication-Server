@@ -251,11 +251,14 @@ async def listen_for_data(send_to_api=False):
                     store_reading(str(device.ieee), device_name, humidity=humidity)
 
                 if device.ieee not in successfully_configured:
-                    log(f"🔄 Trying to configure reporting for {device.ieee} after receiving attribute update...")
+                    log(f"🔄 Trying to configure reporting for {device.ieee} after receiving catch-all event...")
                     asyncio.create_task(configure_and_mark(device))
+                else:
+                    log(f"⚪ Device {device.ieee} already configured, skipping configure attempt.")
 
             def device_initialized(self, device):
                 log(f"✅ Device initialized: {device.ieee}")
+                successfully_configured.add(device.ieee)
                 asyncio.create_task(self._handle_device_initialized(device))
 
             async def _handle_device_initialized(self, device):
