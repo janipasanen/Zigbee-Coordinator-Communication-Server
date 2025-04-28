@@ -287,6 +287,7 @@ async def listen_for_data(send_to_api=False):
                     device = args[0] if args else None
                     if device and hasattr(device, 'ieee'):
                         now = datetime.utcnow().timestamp()
+                        log(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
 
                         # If first time or last request was longer ago than MIN_CATCHALL_POLL_INTERVAL
                         if (device.ieee not in last_catchall_poll) or (
