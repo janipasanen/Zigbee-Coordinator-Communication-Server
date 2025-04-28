@@ -22,6 +22,40 @@ CHANNEL = 15
 TEMPERATURE_CLUSTER_ID = 0x0402
 HUMIDITY_CLUSTER_ID = 0x0405
 
+def log(msg):
+    print(f"[{datetime.utcnow().isoformat()}] {msg}")
+
+async def pair_device():
+    config = {
+        'device': {
+            'path': DEVICE_PATH,
+        },
+    }
+
+    log("Starting ZBT-1 and initializing...")
+
+    app = BellowsApplication(config)
+    await app.connect()
+
+    try:
+        log("Trying to form a new Zigbee network...")
+        await app.form_network()
+        log("Network formed successfully!")
+    except Exception as e:
+        log(f"Could not form network (maybe already exists?): {e}")
+
+    log("Starting the application...")
+    await app.initialize(auto_form=False)
+
+    log("Permitting joins for 60 seconds...")
+    await app.permit(time_s=60)
+
+    log("ZBT-1 is now in pairing mode. Activate pairing on your SNZB-02D sensor.")
+    await asyncio.sleep(60)
+
+    log("Pairing mode has ended.")
+    await app.shutdown()
+
 def initialize_database():
     if not os.path.exists(DATABASE_FILE):
         conn = sqlite3.connect(DATABASE_FILE)
@@ -38,7 +72,7 @@ def initialize_database():
         ''')
         conn.commit()
         conn.close()
-        print("✅ Database initialized.")
+        log("✅ Database initialized.")
 
 def store_reading(device_ieee, device_name, temperature=None, humidity=None):
     conn = sqlite3.connect(DATABASE_FILE)
@@ -51,7 +85,7 @@ def store_reading(device_ieee, device_name, temperature=None, humidity=None):
     conn.close()
 
 async def send_recent_data_to_api():
-    print("📤 Preparing to send last 4 hours of data to API...")
+    log("📤 Preparing to send last 4 hours of data to API...")
 
     conn = sqlite3.connect(DATABASE_FILE)
     c = conn.cursor()
@@ -85,86 +119,45 @@ async def send_recent_data_to_api():
             try:
                 async with session.post(API_ENDPOINT, json=payload) as response:
                     if response.status == 200:
-                        print("✅ Successfully sent data to API.")
+                        log("✅ Successfully sent data to API.")
                     else:
-                        print(f"❌ Failed to send data. HTTP {response.status}")
+                        log(f"❌ Failed to send data. HTTP {response.status}")
             except Exception as e:
-                print(f"❌ Exception during API POST: {e}")
+                log(f"❌ Exception during API POST: {e}")
     else:
-        print("ℹ️ No data to send.")
+        log("ℹ️ No data to send.")
+
 
 async def configure_reporting(device):
     try:
         endpoint = device.endpoints.get(1)
         if endpoint is None:
-            print(f"⚠️ No endpoint 1 on device {device.ieee}")
+            log(f"⚠️ No endpoint 1 on device {device.ieee}")
             return
 
         if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
             temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
             await temp_cluster.bind()
-            await temp_cluster.configure_reporting(
-                0x0000,  # measured_value attribute
-                10,  # min reporting interval (10 seconds)
-                300,  # max reporting interval (5 minutes)
-                5  # reportable change (0.05°C * 100 = 5)
-            )
-            print(f"✅ Configured temperature reporting for {device.ieee}")
+            await temp_cluster.configure_reporting(0x0000, 10, 300, 5)
+            log(f"✅ Configured temperature reporting for {device.ieee}")
         else:
-            print(f"⚠️ Temperature cluster not found on {device.ieee}")
+            log(f"⚠️ Temperature cluster not found on {device.ieee}")
 
         if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
             hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
             await hum_cluster.bind()
-            await hum_cluster.configure_reporting(
-                0x0000,  # measured_value attribute
-                10,  # min reporting interval (10 seconds)
-                300,  # max reporting interval (5 minutes)
-                100  # reportable change (1% humidity * 100 = 100)
-            )
-            print(f"✅ Configured humidity reporting for {device.ieee}")
+            await hum_cluster.configure_reporting(0x0000, 10, 300, 100)
+            log(f"✅ Configured humidity reporting for {device.ieee}")
         else:
-            print(f"⚠️ Humidity cluster not found on {device.ieee}")
+            log(f"⚠️ Humidity cluster not found on {device.ieee}")
 
     except Exception as e:
-        print(f"❌ Failed smart_configure_reporting for {device.ieee}: {e}")
-
-
-async def pair_device():
-    config = {
-        'device': {
-            'path': DEVICE_PATH,
-        },
-    }
-
-    print("Starting ZBT-1 and initializing...")
-
-    app = BellowsApplication(config)
-    await app.connect()
-
-    try:
-        print("Trying to form a new Zigbee network...")
-        await app.form_network()
-        print("Network formed successfully!")
-    except Exception as e:
-        print(f"Could not form network (maybe already exists?): {e}")
-
-    print("Starting the application...")
-    await app.initialize(auto_form=False)
-
-    print("Permitting joins for 60 seconds...")
-    await app.permit(time_s=60)
-
-    print("ZBT-1 is now in pairing mode. Activate pairing on your SNZB-02D sensor.")
-    await asyncio.sleep(60)
-
-    print("Pairing mode has ended.")
-    await app.shutdown()
+        log(f"❌ Failed configure_reporting for {device.ieee}: {e}")
 
 async def discover_sleepy_devices(app):
     network = app.devices
 
-    #print("Current devices known by coordinator:")
+    #log("Current devices known by coordinator:")
     for nwk, device in network.items():
         if isinstance(nwk, int):
             nwk_str = f"0x{nwk:04X}"
@@ -173,20 +166,56 @@ async def discover_sleepy_devices(app):
 
         ieee_str = str(device.ieee) if device.ieee else "<unknown>"
         device_name = device.model if hasattr(device, 'model') else "Unknown"
-        #print(f"NWK: {nwk_str}, IEEE: {ieee_str}, Model: {device_name}")
+        #log(f"NWK: {nwk_str}, IEEE: {ieee_str}, Model: {device_name}")
 
     for nwk, device in network.items():
         if device.ieee is None:
             try:
-                print(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
+                log(f"Sending Simple Descriptor Request to 0x{nwk:04X}...")
                 await app.zdo.request_simple_desc(nwk, 1)
             except Exception as e:
-                print(f"Failed to request descriptor from 0x{nwk:04X}: {e}")
+                log(f"Failed to request descriptor from 0x{nwk:04X}: {e}")
 
 async def periodic_discover(app):
     while True:
         await discover_sleepy_devices(app)
         await asyncio.sleep(60)
+
+async def periodic_poll_devices(app):
+    while True:
+        network = app.devices
+        for nwk, device in network.items():
+            if device.ieee is None:
+                continue
+
+            device_name = device.model if hasattr(device, 'model') else "Unknown"
+
+            try:
+                endpoint = device.endpoints.get(1)
+                if endpoint is None:
+                    log(f"⚠️ No endpoint 1 on device {device.ieee}")
+                    continue
+
+                if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
+                    temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
+                    res = await temp_cluster.read_attributes(['measured_value'])
+                    if 'measured_value' in res:
+                        temperature = res['measured_value'] / 100
+                        log(f"🌡️ Polled temperature: {temperature:.1f} °C (from {device.ieee})")
+                        store_reading(str(device.ieee), device_name, temperature=temperature)
+
+                if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
+                    hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
+                    res = await hum_cluster.read_attributes(['measured_value'])
+                    if 'measured_value' in res:
+                        humidity = res['measured_value'] / 100
+                        log(f"💧 Polled humidity: {humidity:.1f}% (from {device.ieee})")
+                        store_reading(str(device.ieee), device_name, humidity=humidity)
+
+            except Exception as e:
+                log(f"❌ Exception while polling {device.ieee}: {e}")
+
+        await asyncio.sleep(300)
 
 async def listen_for_data(send_to_api=False):
     config = {
@@ -195,16 +224,17 @@ async def listen_for_data(send_to_api=False):
         },
     }
 
-    print("Connecting to ZBT-1 to listen for data...")
+    log("Connecting to ZBT-1 to listen for data...")
     app = BellowsApplication(config)
 
     await app.connect()
     await app.initialize(auto_form=False)
 
-    print("Listening for incoming Zigbee events...")
+    log("Listening for incoming Zigbee events...")
 
     # Track devices we've successfully configured
     successfully_configured = set()
+
 
     def make_listener():
         class Listener:
@@ -212,61 +242,51 @@ async def listen_for_data(send_to_api=False):
                 device_name = device.model if hasattr(device, 'model') else "Unknown"
                 if cluster.cluster_id == TEMPERATURE_CLUSTER_ID:
                     temperature = value / 100
-                    print(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
+                    log(f"🌡️ Temperature: {temperature:.1f} °C (from {device.ieee})")
                     store_reading(str(device.ieee), device_name, temperature=temperature)
                 elif cluster.cluster_id == HUMIDITY_CLUSTER_ID:
                     humidity = value / 100
-                    print(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
+                    log(f"💧 Humidity: {humidity:.1f}% (from {device.ieee})")
                     store_reading(str(device.ieee), device_name, humidity=humidity)
-                else:
-                    print(f"Device {device.ieee}: Cluster 0x{cluster.cluster_id:04X} Attribute {attribute} Value {value}")
 
-                # 🔵 If we haven't configured reporting yet, try now
                 if device.ieee not in successfully_configured:
-                    print(f"🔄 Trying to configure reporting for {device.ieee} after receiving attribute update...")
+                    log(f"🔄 Trying to configure reporting for {device.ieee} after receiving attribute update...")
                     asyncio.create_task(configure_and_mark(device))
 
             def device_initialized(self, device):
-                print(f"✅ Device initialized: {device.ieee}")
+                log(f"✅ Device initialized: {device.ieee}")
                 asyncio.create_task(self._handle_device_initialized(device))
 
             async def _handle_device_initialized(self, device):
                 try:
                     endpoint = device.endpoints.get(1)
                     if endpoint is None:
-                        print(f"⚠️ No endpoint 1 on device {device.ieee}")
+                        log(f"⚠️ No endpoint 1 on device {device.ieee}")
                         return
 
                     if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
                         temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
                         res = await temp_cluster.read_attributes(['measured_value'])
-                        print(f"🌡️ Initial temperature read for {device.ieee}: {res}")
-                    else:
-                        print(f"⚠️ Temperature cluster not found on {device.ieee}")
+                        log(f"🌡️ Initial temperature read for {device.ieee}: {res}")
 
                     if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
                         hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
                         res = await hum_cluster.read_attributes(['measured_value'])
-                        print(f"💧 Initial humidity read for {device.ieee}: {res}")
-                    else:
-                        print(f"⚠️ Humidity cluster not found on {device.ieee}")
+                        log(f"💧 Initial humidity read for {device.ieee}: {res}")
 
                     await configure_reporting(device)
-
                 except Exception as e:
-                    print(f"❌ Exception in handling device {device.ieee}: {e}")
+                    log(f"❌ Exception in handling device {device.ieee}: {e}")
 
             def device_joined(self, device):
-                print(f"🎉 Device joined: {device.ieee}")
+                log(f"🎉 Device joined: {device.ieee}")
 
             def __getattr__(self, name):
                 def catch_all(*args, **kwargs):
-                    #print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
                     device = args[0] if args else None
                     if device and hasattr(device, 'ieee'):
-                        # 🔵 Try to configure again if a sleepy device wakes up and talks
                         if device.ieee not in successfully_configured:
-                            print(f"🔄 Trying to configure reporting for {device.ieee} after receiving catch-all event...")
+                            log(f"🔄 Trying to configure reporting for {device.ieee} after receiving catch-all event...")
                             asyncio.create_task(configure_and_mark(device))
                 return catch_all
 
@@ -277,17 +297,18 @@ async def listen_for_data(send_to_api=False):
             await configure_reporting(device)
             successfully_configured.add(device.ieee)
         except Exception as e:
-            print(f"❌ Exception during configure_reporting for {device.ieee}: {e}")
+            log(f"❌ Exception during configure_reporting for {device.ieee}: {e}")
 
     app.add_listener(make_listener())
 
     try:
         asyncio.create_task(periodic_discover(app))
+        asyncio.create_task(periodic_poll_devices(app))
         if send_to_api:
             asyncio.create_task(send_recent_data_to_api())
         await asyncio.Event().wait()
     except KeyboardInterrupt:
-        print("Exiting...")
+        log("Exiting...")
     finally:
         await app.shutdown()
 
@@ -310,5 +331,4 @@ def main():
         asyncio.run(listen_for_data(send_to_api=args.sendToApi))
 
 if __name__ == "__main__":
-    main()
     main()
