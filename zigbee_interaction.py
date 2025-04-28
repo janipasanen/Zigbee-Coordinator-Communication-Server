@@ -283,14 +283,48 @@ async def listen_for_data(send_to_api=False):
 
             def __getattr__(self, name):
                 def catch_all(*args, **kwargs):
+                    # print(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}
                     device = args[0] if args else None
                     if device and hasattr(device, 'ieee'):
+
+                        log(f"🔵 Catch-all event received from {device.ieee} (event: {name})")
+
+                        # Always read fresh temperature + humidity when catch-all received
+                        asyncio.create_task(read_and_store_device_values(device))
+
                         if device.ieee not in successfully_configured:
                             log(f"🔄 Trying to configure reporting for {device.ieee} after receiving catch-all event...")
                             asyncio.create_task(configure_and_mark(device))
                 return catch_all
 
         return Listener()
+
+    async def read_and_store_device_values(device):
+        try:
+            device_name = device.model if hasattr(device, 'model') else "Unknown"
+            endpoint = device.endpoints.get(1)
+            if endpoint is None:
+                log(f"⚠️ No endpoint 1 on device {device.ieee}")
+                return
+
+            if TEMPERATURE_CLUSTER_ID in endpoint.in_clusters:
+                temp_cluster = endpoint.in_clusters[TEMPERATURE_CLUSTER_ID]
+                res = await temp_cluster.read_attributes(['measured_value'])
+                if 'measured_value' in res:
+                    temperature = res['measured_value'] / 100
+                    log(f"🌡️ Polled (catch-all) temperature: {temperature:.1f} °C (from {device.ieee})")
+                    store_reading(str(device.ieee), device_name, temperature=temperature)
+
+            if HUMIDITY_CLUSTER_ID in endpoint.in_clusters:
+                hum_cluster = endpoint.in_clusters[HUMIDITY_CLUSTER_ID]
+                res = await hum_cluster.read_attributes(['measured_value'])
+                if 'measured_value' in res:
+                    humidity = res['measured_value'] / 100
+                    log(f"💧 Polled (catch-all) humidity: {humidity:.1f}% (from {device.ieee})")
+                    store_reading(str(device.ieee), device_name, humidity=humidity)
+
+        except Exception as e:
+            log(f"❌ Exception while reading device {device.ieee}: {e}")
 
     async def configure_and_mark(device):
         try:
