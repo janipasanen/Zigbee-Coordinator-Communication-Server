@@ -287,16 +287,21 @@ async def listen_for_data(send_to_api=False):
                     device = args[0] if args else None
                     if device and hasattr(device, 'ieee'):
                         now = datetime.utcnow().timestamp()
-                        log(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
+                        # log(f"[Catch-All] Event: {name} Args: {args} Kwargs: {kwargs}")
 
-                        # If first time or last request was longer ago than MIN_CATCHALL_POLL_INTERVAL
-                        if (device.ieee not in last_catchall_poll) or (
-                                now - last_catchall_poll[device.ieee] > MIN_CATCHALL_POLL_INTERVAL):
-                            log(f"🔵 Catch-all event received from {device.ieee} (event: {name}), triggering value read.")
-                            last_catchall_poll[device.ieee] = now
-                            asyncio.create_task(read_and_store_device_values(device))
+                        # 🧠 Only handle known good devices (e.g., SONOFF SNZB-02D)
+                        if getattr(device, 'manufacturer', '').upper() == 'SONOFF' and getattr(device, 'model',
+                                                                                               '').upper() == 'SNZB-02D':
+                            # Only poll if not rate-limited
+                            if (device.ieee not in last_catchall_poll) or (
+                                    now - last_catchall_poll[device.ieee] > MIN_CATCHALL_POLL_INTERVAL):
+                                log(f"🔵 Catch-all event received from {device.ieee} ({device.model}) - triggering value read.")
+                                last_catchall_poll[device.ieee] = now
+                                asyncio.create_task(read_and_store_device_values(device))
+                            else:
+                                log(f"🔵 Catch-all event from {device.ieee} ({device.model}) ignored (rate limited).")
                         #else:
-                        #log(f"🔵 Catch-all event from {device.ieee} ignored (rate limited).")
+                           # log(f"⚪ Ignoring catch-all event from {device.ieee} ({getattr(device, 'model', 'Unknown')})")
 
                         # Still configure if not already done
                         if device.ieee not in successfully_configured:
