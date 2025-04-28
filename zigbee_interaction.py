@@ -298,10 +298,10 @@ async def listen_for_data(send_to_api=False):
                                 log(f"🔵 Catch-all event received from {device.ieee} ({device.model}) - triggering value read.")
                                 last_catchall_poll[device.ieee] = now
                                 asyncio.create_task(read_and_store_device_values(device))
-                            else:
-                                log(f"🔵 Catch-all event from {device.ieee} ({device.model}) ignored (rate limited).")
-                        #else:
-                           # log(f"⚪ Ignoring catch-all event from {device.ieee} ({getattr(device, 'model', 'Unknown')})")
+                            #else:
+                                #log(f"🔵 Catch-all event from {device.ieee} ({device.model}) ignored (rate limited).")
+                        else:
+                            log(f"⚪ Ignoring catch-all event from {device.ieee} ({getattr(device, 'model', 'Unknown')})")
 
                         # Still configure if not already done
                         if device.ieee not in successfully_configured:
