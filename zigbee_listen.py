@@ -125,19 +125,28 @@ async def listen_for_data(send_to_api=False):
                 log(f"⚠️ No temp/humidity cluster found on {ieee_str}")
                 return
 
-            temperature = humidity = None
-            try:
-                if temp_cluster:
-                    res = await temp_cluster.read_attributes(["measured_value"])
-                    if isinstance(res, dict) and "measured_value" in res:
-                        temperature = res["measured_value"] / 100
-                if hum_cluster:
-                    res = await hum_cluster.read_attributes(["measured_value"])
-                    if isinstance(res, dict) and "measured_value" in res:
-                        humidity = res["measured_value"] / 100
-            except Exception as e:
-                log(f"❌ Error reading attributes from {ieee_str}: {e}")
-                return
+            async def try_read():
+                temperature = humidity = None
+                try:
+                    if temp_cluster:
+                        res = await temp_cluster.read_attributes(["measured_value"])
+                        if isinstance(res, dict) and "measured_value" in res:
+                            temperature = res["measured_value"] / 100
+                    if hum_cluster:
+                        res = await hum_cluster.read_attributes(["measured_value"])
+                        if isinstance(res, dict) and "measured_value" in res:
+                            humidity = res["measured_value"] / 100
+                except Exception as e:
+                    log(f"❌ Error reading attributes from {ieee_str}: {e}")
+                return temperature, humidity
+
+            # First try
+            temperature, humidity = await try_read()
+
+            if temperature is None and humidity is None:
+                log(f"⚠️ First read failed from {ieee_str}, retrying after 1 second...")
+                await asyncio.sleep(1)
+                temperature, humidity = await try_read()
 
             if temperature is not None or humidity is not None:
                 device_name = getattr(device, "model", "SNZB-02D")
@@ -162,7 +171,7 @@ async def listen_for_data(send_to_api=False):
                 except Exception as e:
                     log(f"❌ Failed to store in database for {ieee_str}: {e}")
             else:
-                log(f"⚠️ No sensor data read from {ieee_str}")
+                log(f"⚠️ No sensor data read from {ieee_str} after retry.")
 
     listener = MainListener()
     app.add_listener(listener)
