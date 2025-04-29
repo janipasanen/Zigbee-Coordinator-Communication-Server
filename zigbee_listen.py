@@ -10,7 +10,7 @@ from bellows.zigbee.application import ControllerApplication as BellowsApplicati
 # Configuration variables
 DEVICE_PATH = '/dev/ttyUSB0'
 DATABASE_FILE = 'sensor_data.db'
-API_ENDPOINT = 'https://example.com'
+API_ENDPOINT = 'http://172.16.222.43/readings/batch'
 
 # Zigbee Cluster IDs
 TEMPERATURE_CLUSTER_ID = 0x0402
@@ -80,6 +80,13 @@ async def pair_device():
     await app.shutdown()
 
 # ---- Listening Command ----
+def resolve_device_location(ieee: str) -> str:
+    if ieee.lower() == "0c:ef:f6:ff:fe:49:a4:1d":
+        return "Sovrum"
+    elif ieee.lower() == "0c:ef:f6:ff:fe:49:a5:82":
+        return "Kontor"
+    else:
+        return "Okänd"
 
 async def listen_for_data(send_to_api=False):
     config = {
@@ -165,11 +172,12 @@ async def listen_for_data(send_to_api=False):
                     conn.close()
                     log(f"📥 Stored reading: {device_name} ({ieee_str}) Temp={temperature}°C Hum={humidity}% at {timestamp}")
                     self.readings.append({
-                        "device_ieee": ieee_str,
-                        "device_name": device_name,
+                        "deviceIEEE": ieee_str,
+                        "deviceName": device_name,
+                        "deviceLocation": resolve_device_location(ieee_str),
                         "temperature": temperature,
                         "humidity": humidity,
-                        "timestamp": timestamp
+                        "timestamp": datetime.now(CET).isoformat()
                     })
                 except Exception as e:
                     log(f"❌ Failed to store in database for {ieee_str}: {e}")
