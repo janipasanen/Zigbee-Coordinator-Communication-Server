@@ -120,54 +120,54 @@ async def listen_for_data(send_to_api=False):
 
         async def read_device_data(self, device):
             ieee_str = str(device.ieee)
-            temp_cluster = hum_cluster = None
-            for ep_id, ep in device.endpoints.items():
-                if ep_id == 0:
-                    continue
-                if TEMPERATURE_CLUSTER_ID in ep.in_clusters:
-                    temp_cluster = ep.in_clusters[TEMPERATURE_CLUSTER_ID]
-                if HUMIDITY_CLUSTER_ID in ep.in_clusters:
-                    hum_cluster = ep.in_clusters[HUMIDITY_CLUSTER_ID]
-                if temp_cluster and hum_cluster:
+            device_name = getattr(device, "model", "SNZB-02D")
+
+            found_cluster = False
+            temperature = humidity = None
+
+            for attempt in range(5):  # retry 5 times every 5s = 25s total
+                await asyncio.sleep(5)
+
+                for ep_id, ep in device.endpoints.items():
+                    if ep_id == 0:
+                        continue
+
+                    log(f"🔎 Checking endpoint {ep_id} on {ieee_str} with clusters: {list(ep.in_clusters.keys())}")
+                    temp_cluster = ep.in_clusters.get(TEMPERATURE_CLUSTER_ID)
+                    hum_cluster = ep.in_clusters.get(HUMIDITY_CLUSTER_ID)
+
+                    if temp_cluster:
+                        try:
+                            res = await temp_cluster.read_attributes(["measured_value"])
+                            log(f"🌡️ Temp raw read: {res}")
+                            if isinstance(res, dict) and "measured_value" in res:
+                                temperature = res["measured_value"] / 100
+                                found_cluster = True
+                        except Exception as e:
+                            log(f"❌ Temp read error from {ieee_str}: {e}")
+
+                    if hum_cluster:
+                        try:
+                            res = await hum_cluster.read_attributes(["measured_value"])
+                            log(f"💧 Humidity raw read: {res}")
+                            if isinstance(res, dict) and "measured_value" in res:
+                                humidity = res["measured_value"] / 100
+                                found_cluster = True
+                        except Exception as e:
+                            log(f"❌ Humidity read error from {ieee_str}: {e}")
+
+                if temperature is not None or humidity is not None:
                     break
 
-            if not temp_cluster and not hum_cluster:
-                log(f"⚠️ No temp/humidity cluster found on {ieee_str}")
-                return
-
-            async def try_read():
-                temperature = humidity = None
-                try:
-                    if temp_cluster:
-                        res = await temp_cluster.read_attributes(["measured_value"])
-                        if isinstance(res, dict) and "measured_value" in res:
-                            temperature = res["measured_value"] / 100
-                    if hum_cluster:
-                        res = await hum_cluster.read_attributes(["measured_value"])
-                        if isinstance(res, dict) and "measured_value" in res:
-                            humidity = res["measured_value"] / 100
-                except Exception as e:
-                    log(f"❌ Error reading attributes from {ieee_str}: {e}")
-                return temperature, humidity
-
-            # First try
-            temperature, humidity = await try_read()
-
-            if temperature is None and humidity is None:
-                log(f"⚠️ First read failed from {ieee_str}, retrying after 2 seconds...")
-                await asyncio.sleep(2)
-                temperature, humidity = await try_read()
-
             if temperature is not None or humidity is not None:
-                device_name = getattr(device, "model", "SNZB-02D")
-                timestamp = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")  # Local time
+                timestamp = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
                 try:
                     conn = sqlite3.connect(DATABASE_FILE)
                     c = conn.cursor()
                     c.execute('''
-                        INSERT INTO sensor_readings (device_ieee, device_name, temperature, humidity, timestamp)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (ieee_str, device_name, temperature, humidity, timestamp))
+                              INSERT INTO sensor_readings (device_ieee, device_name, temperature, humidity, timestamp)
+                              VALUES (?, ?, ?, ?, ?)
+                              ''', (ieee_str, device_name, temperature, humidity, timestamp))
                     conn.commit()
                     conn.close()
                     log(f"📥 Stored reading: {device_name} ({ieee_str}) Temp={temperature}°C Hum={humidity}% at {timestamp}")
@@ -181,8 +181,10 @@ async def listen_for_data(send_to_api=False):
                     })
                 except Exception as e:
                     log(f"❌ Failed to store in database for {ieee_str}: {e}")
+            elif found_cluster:
+                log(f"⚠️ Clusters found but no values received from {ieee_str}")
             else:
-                log(f"⚠️ No sensor data read from {ieee_str} after retry.")
+                log(f"⚠️ No readable clusters found for {ieee_str}")
 
     listener = MainListener()
     app.add_listener(listener)
