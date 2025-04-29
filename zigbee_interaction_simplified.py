@@ -130,7 +130,6 @@ class MainListener:
 
 async def run_cycle():
     """Run one 15-minute cycle of network initialization and data collection."""
-    # Start the Zigbee controller application (using Bellows)
     config = {
         "database_path": ZIGBEE_DB_PATH,
         "device": {"path": ZIGBEE_PORT, "baudrate": ZIGBEE_BAUD}
@@ -142,29 +141,37 @@ async def run_cycle():
         logging.error(f"Failed to start Zigbee controller: {e}")
         return 0
 
-    # Set up listener for device initialization events
     listener = MainListener()
     app.add_listener(listener)
 
-    # Allow sensors to join or rejoin the network for 15 minutes
     try:
         await app.permit(900)
     except Exception as e:
         logging.error(f"Error enabling join mode: {e}")
 
     logging.info("Waiting up to 15 minutes for SNZB-02D devices to initialize...")
-    await asyncio.sleep(900)  # wait 15 minutes
 
-    # Grace period: ensure any last attribute reads complete
+    # Wait exactly 15 minutes total, regardless of device responses
+    stop_event = asyncio.Event()
+
+    async def timer():
+        await asyncio.sleep(900)
+        stop_event.set()
+
+    asyncio.create_task(timer())
+
+    # Wait until timer is done
+    await stop_event.wait()
+
+    # Extra grace period for any final reads
     await asyncio.sleep(2)
 
-    # Shutdown the Zigbee application (close network)
     logging.info("Shutting down Zigbee network...")
     try:
         if hasattr(app, "shutdown"):
             await app.shutdown()
         elif getattr(app, "_api", None):
-            app._api.close()  # fallback: close low-level API
+            app._api.close()
     except Exception as e:
         logging.error(f"Error during shutdown: {e}")
 
