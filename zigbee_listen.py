@@ -218,19 +218,16 @@ async def listen_for_data(send_to_api=False):
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
 async def send_to_api_function(readings):
-    payload = {
-        'readings': readings,
-        'batch_sent_at': datetime.now(CET).isoformat()  # Local time here too
-    }
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(API_ENDPOINT, json=payload) as response:
-                if response.status == 200:
+            async with session.post(API_ENDPOINT, json=readings) as response:
+                if response.status == 200 or response.status == 201:
                     log(f"📤 Sent {len(readings)} readings to API successfully.")
                 else:
                     log(f"❌ API POST failed: HTTP {response.status}")
     except Exception as e:
         log(f"❌ Exception during API POST: {e}")
+
 
 # ---- Main Entry ----
 
