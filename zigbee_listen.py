@@ -154,8 +154,8 @@ async def listen_for_data(send_to_api=False):
             temperature, humidity = await try_read()
 
             if temperature is None and humidity is None:
-                log(f"⚠️ First read failed from {ieee_str}, retrying after 1 second...")
-                await asyncio.sleep(1)
+                log(f"⚠️ First read failed from {ieee_str}, retrying after 2 seconds...")
+                await asyncio.sleep(2)
                 temperature, humidity = await try_read()
 
             if temperature is not None or humidity is not None:
