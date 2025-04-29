@@ -3,7 +3,7 @@ import argparse
 import sqlite3
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import aiohttp
 from bellows.zigbee.application import ControllerApplication as BellowsApplication
 
@@ -20,8 +20,11 @@ WAIT_MINUTES = 15
 
 # ---- Helper Functions ----
 
+# Set CET timezone manually (UTC+1 or +2 with daylight saving)
+CET = timezone(timedelta(hours=2))  # Change to +1 if winter time (no DST)
+
 def log(msg):
-    print(f"[{datetime.utcnow().isoformat()}] {msg}")
+    print(f"[{datetime.now(CET).isoformat()}] {msg}")
 
 def initialize_database():
     if not os.path.exists(DATABASE_FILE):
@@ -103,7 +106,7 @@ async def listen_for_data(send_to_api=False):
             log(f"✅ Device initialized: {ieee_str} ({model})")
 
             async def delayed_read():
-                await asyncio.sleep(0.2)  # slight delay before reading
+                await asyncio.sleep(2.0)  # ← Changed to 2 seconds here!
                 await self.read_device_data(device)
 
             asyncio.create_task(delayed_read())
@@ -150,7 +153,7 @@ async def listen_for_data(send_to_api=False):
 
             if temperature is not None or humidity is not None:
                 device_name = getattr(device, "model", "SNZB-02D")
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                timestamp = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")  # Local time
                 try:
                     conn = sqlite3.connect(DATABASE_FILE)
                     c = conn.cursor()
@@ -209,7 +212,7 @@ async def listen_for_data(send_to_api=False):
 async def send_to_api_function(readings):
     payload = {
         'readings': readings,
-        'batch_sent_at': datetime.utcnow().isoformat()
+        'batch_sent_at': datetime.now(CET).isoformat()  # Local time here too
     }
     try:
         async with aiohttp.ClientSession() as session:
