@@ -139,8 +139,9 @@ async def listen_for_data(send_to_api=False):
                         try:
                             res = await temp_cluster.read_attributes(["measured_value"])
                             log(f"🌡️ Temp raw read: {res}")
-                            if isinstance(res, dict) and "measured_value" in res:
-                                temperature = res["measured_value"] / 100
+                            res_data = res[0] if isinstance(res, tuple) and len(res) > 0 else res
+                            if isinstance(res_data, dict) and "measured_value" in res_data:
+                                temperature = res_data["measured_value"] / 100
                                 found_cluster = True
                         except Exception as e:
                             log(f"❌ Temp read error from {ieee_str}: {e}")
@@ -149,8 +150,9 @@ async def listen_for_data(send_to_api=False):
                         try:
                             res = await hum_cluster.read_attributes(["measured_value"])
                             log(f"💧 Humidity raw read: {res}")
-                            if isinstance(res, dict) and "measured_value" in res:
-                                humidity = res["measured_value"] / 100
+                            res_data = res[0] if isinstance(res, tuple) and len(res) > 0 else res
+                            if isinstance(res_data, dict) and "measured_value" in res_data:
+                                humidity = res_data["measured_value"] / 100
                                 found_cluster = True
                         except Exception as e:
                             log(f"❌ Humidity read error from {ieee_str}: {e}")
