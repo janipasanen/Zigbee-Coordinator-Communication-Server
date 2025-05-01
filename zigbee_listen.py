@@ -103,7 +103,7 @@ def find_missing_rows(local_rows, api_rows):
     readings_to_send = []
     for row in local_rows:
         ieee = row["device_ieee"]
-        ts = dateparser.parse(row["timestamp"]).astimezone(CET).isoformat()
+        ts = dateparser.parse(row["timestamp"]).astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         key = (ieee, ts)
         if key not in api_keys:
             readings_to_send.append({
