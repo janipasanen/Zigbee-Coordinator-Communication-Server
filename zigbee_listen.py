@@ -13,7 +13,7 @@ DEVICE_PATH = '/dev/ttyUSB0'
 DATABASE_FILE = 'sensor_data.db'
 API_READINGS = 'http://172.16.222.43:8199/readings'
 API_POST_ONE = 'http://172.16.222.43:8199/readings'
-API_POST_BATCH = 'http://172.16.222.43/readings/batch'
+API_POST_BATCH = 'http://172.16.222.43:8199/readings/batch'
 
 TEMPERATURE_CLUSTER_ID = 0x0402
 HUMIDITY_CLUSTER_ID = 0x0405
