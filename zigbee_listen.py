@@ -4,26 +4,31 @@ import sqlite3
 import os
 import sys
 from datetime import datetime, timezone, timedelta
+from dateutil import parser as dateparser
 import aiohttp
 from bellows.zigbee.application import ControllerApplication as BellowsApplication
 
-# Configuration variables
+# Configuration
 DEVICE_PATH = '/dev/ttyUSB0'
 DATABASE_FILE = 'sensor_data.db'
-API_ENDPOINT = 'http://172.16.222.43/readings/batch'
+API_READINGS = 'http://172.16.222.43:8199/readings'
+API_POST_ONE = 'http://172.16.222.43:8199/readings'
+API_POST_BATCH = 'http://172.16.222.43/readings/batch'
 
-# Zigbee Cluster IDs
 TEMPERATURE_CLUSTER_ID = 0x0402
 HUMIDITY_CLUSTER_ID = 0x0405
-
-WAIT_MINUTES = 15
-
-# ---- Helper Functions ----
-
-CET = timezone(timedelta(hours=2))  # Adjust manually for daylight saving
+CET = timezone(timedelta(hours=2))  # UTC+2 summer time
 
 def log(msg):
     print(f"[{datetime.now(CET).isoformat()}] {msg}")
+
+def resolve_device_location(ieee: str) -> str:
+    if ieee.lower() == "0c:ef:f6:ff:fe:49:a4:1d":
+        return "Sovrum"
+    elif ieee.lower() == "0c:ef:f6:ff:fe:49:a5:82":
+        return "Kontor"
+    else:
+        return "Okänd"
 
 def initialize_database():
     if not os.path.exists(DATABASE_FILE):
@@ -36,22 +41,90 @@ def initialize_database():
                 device_name TEXT,
                 temperature REAL,
                 humidity REAL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                timestamp TEXT
             )
         ''')
         conn.commit()
         conn.close()
         log("✅ Database initialized.")
 
-# ---- Pairing Command ----
+async def send_one_reading_to_api(reading):
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_POST_ONE, json=reading) as response:
+                if response.status in (200, 201):
+                    log(f"📤 Sent reading to API: {reading}")
+                else:
+                    log(f"❌ Failed to send reading: HTTP {response.status}")
+    except Exception as e:
+        log(f"❌ Exception during API POST: {e}")
 
-async def pair_device():
-    config = {
-        'device': {
-            'path': DEVICE_PATH,
-        },
+async def send_batch_readings_to_api(readings):
+    if not readings:
+        log("ℹ️ No missing readings to send.")
+        return
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_POST_BATCH, json=readings) as response:
+                if response.status in (200, 201):
+                    log(f"📤 Sent {len(readings)} missing readings to API.")
+                else:
+                    log(f"❌ Batch POST failed: HTTP {response.status}")
+    except Exception as e:
+        log(f"❌ Batch POST exception: {e}")
+
+async def fetch_api_readings():
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(API_READINGS) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    log(f"❌ Failed to fetch API readings: HTTP {response.status}")
+    except Exception as e:
+        log(f"❌ Exception fetching API readings: {e}")
+    return []
+
+def load_local_readings():
+    conn = sqlite3.connect(DATABASE_FILE)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM sensor_readings")
+    rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return rows
+
+def find_missing_rows(local_rows, api_rows):
+    api_keys = {
+        (r["deviceIEEE"], dateparser.parse(r["timestamp"]).isoformat())
+        for r in api_rows
     }
 
+    readings_to_send = []
+    for row in local_rows:
+        ieee = row["device_ieee"]
+        ts = dateparser.parse(row["timestamp"]).astimezone(CET).isoformat()
+        key = (ieee, ts)
+        if key not in api_keys:
+            readings_to_send.append({
+                "deviceIEEE": ieee,
+                "deviceName": row["device_name"],
+                "deviceLocation": resolve_device_location(ieee),
+                "temperature": row["temperature"],
+                "humidity": row["humidity"],
+                "timestamp": ts
+            })
+    return readings_to_send
+
+async def read_and_sync_on_startup():
+    log("🔁 Startup: syncing with remote API...")
+    api_data = await fetch_api_readings()
+    local_data = load_local_readings()
+    missing = find_missing_rows(local_data, api_data)
+    await send_batch_readings_to_api(missing)
+
+async def pair_device():
+    config = {'device': {'path': DEVICE_PATH}}
     log("🔌 Starting Zigbee coordinator...")
     app = BellowsApplication(config)
     await app.connect()
@@ -69,60 +142,37 @@ async def pair_device():
         log("🟢 Permitting joins for 60 seconds...")
         await app.permit(time_s=60)
     except Exception:
-        log("⚪ Could not explicitly permit joins (probably already open).")
+        log("⚪ Could not explicitly permit joins.")
 
     log("🛎️ Pair your SNZB-02D sensors now!")
     await asyncio.sleep(60)
-
     log("⏹️ Pairing mode ended.")
     await app.shutdown()
 
-# ---- Location Mapping ----
-
-def resolve_device_location(ieee: str) -> str:
-    if ieee.lower() == "0c:ef:f6:ff:fe:49:a4:1d":
-        return "Sovrum"
-    elif ieee.lower() == "0c:ef:f6:ff:fe:49:a5:82":
-        return "Kontor"
-    else:
-        return "Okänd"
-
-# ---- Main Listener Logic ----
-
-async def listen_for_data(send_to_api=False):
-    config = {
-        'device': {
-            'path': DEVICE_PATH,
-        },
-    }
+async def listen_for_data():
+    config = {'device': {'path': DEVICE_PATH}}
+    app = BellowsApplication(config)
 
     log(f"🔌 Connecting to ZBT-1 on {DEVICE_PATH}...")
-    app = BellowsApplication(config)
     await app.connect()
     await app.initialize(auto_form=False)
     log("🛰️ Listening for device data...")
 
     class MainListener:
-        def __init__(self):
-            self.readings = []
-            self.tasks = []
-
         def device_initialized(self, device):
             ieee_str = str(device.ieee)
-            model = getattr(device, "model", "<unknown>")
+            model = getattr(device, "model", "SNZB-02D")
             log(f"✅ Device initialized: {ieee_str} ({model})")
 
             async def delayed_read():
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(2)
                 await self.read_device_data(device)
 
-            task = asyncio.create_task(delayed_read())
-            self.tasks.append(task)
+            asyncio.create_task(delayed_read())
 
         async def read_device_data(self, device):
             ieee_str = str(device.ieee)
             device_name = getattr(device, "model", "SNZB-02D")
-            found_cluster = False
             temperature = humidity = None
 
             for attempt in range(5):
@@ -131,123 +181,76 @@ async def listen_for_data(send_to_api=False):
                     if ep_id == 0:
                         continue
 
-                    log(f"🔎 Checking endpoint {ep_id} on {ieee_str} with clusters: {list(ep.in_clusters.keys())}")
                     temp_cluster = ep.in_clusters.get(TEMPERATURE_CLUSTER_ID)
                     hum_cluster = ep.in_clusters.get(HUMIDITY_CLUSTER_ID)
 
                     if temp_cluster:
                         try:
                             res = await temp_cluster.read_attributes(["measured_value"])
-                            log(f"🌡️ Temp raw read: {res}")
-                            res_data = res[0] if isinstance(res, tuple) and len(res) > 0 else res
+                            res_data = res[0] if isinstance(res, tuple) else res
                             if isinstance(res_data, dict) and "measured_value" in res_data:
                                 temperature = res_data["measured_value"] / 100
-                                found_cluster = True
                         except Exception as e:
-                            log(f"❌ Temp read error from {ieee_str}: {e}")
+                            log(f"❌ Temp read error: {e}")
 
                     if hum_cluster:
                         try:
                             res = await hum_cluster.read_attributes(["measured_value"])
-                            log(f"💧 Humidity raw read: {res}")
-                            res_data = res[0] if isinstance(res, tuple) and len(res) > 0 else res
+                            res_data = res[0] if isinstance(res, tuple) else res
                             if isinstance(res_data, dict) and "measured_value" in res_data:
                                 humidity = res_data["measured_value"] / 100
-                                found_cluster = True
                         except Exception as e:
-                            log(f"❌ Humidity read error from {ieee_str}: {e}")
+                            log(f"❌ Humidity read error: {e}")
 
                 if temperature is not None or humidity is not None:
                     break
 
             if temperature is not None or humidity is not None:
-                log(f"📊 Final read for DB insert - Temp: {temperature}, Humidity: {humidity}")
-                timestamp = datetime.now(CET).strftime("%Y-%m-%d %H:%M:%S")
-                try:
-                    db_path = os.path.abspath(DATABASE_FILE)
-                    log(f"📄 Attempting to open SQLite DB at: {db_path}")
-                    conn = sqlite3.connect(db_path)
-                    c = conn.cursor()
-                    c.execute('''
-                        INSERT INTO sensor_readings (device_ieee, device_name, temperature, humidity, timestamp)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', (ieee_str, device_name, temperature, humidity, timestamp))
-                    conn.commit()
-                    conn.close()
-                    log(f"📥 Stored reading: {device_name} ({ieee_str}) Temp={temperature}°C Hum={humidity}% at {timestamp}")
-                    self.readings.append({
-                        "deviceIEEE": ieee_str,
-                        "deviceName": device_name,
-                        "deviceLocation": resolve_device_location(ieee_str),
-                        "temperature": temperature,
-                        "humidity": humidity,
-                        "timestamp": datetime.now(CET).isoformat()
-                    })
-                except sqlite3.Error as e:
-                    log(f"❌ SQLite error while storing data: {e.args[0]}")
-            elif found_cluster:
-                log(f"⚠️ Clusters found but no values received from {ieee_str}")
+                timestamp = datetime.now(CET).isoformat()
+                conn = sqlite3.connect(DATABASE_FILE)
+                c = conn.cursor()
+                c.execute('''
+                    INSERT INTO sensor_readings (device_ieee, device_name, temperature, humidity, timestamp)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (ieee_str, device_name, temperature, humidity, timestamp))
+                conn.commit()
+                conn.close()
+
+                log(f"📥 Stored and sending reading: {device_name} ({ieee_str}) Temp={temperature}°C Hum={humidity}% at {timestamp}")
+                await send_one_reading_to_api({
+                    "deviceIEEE": ieee_str,
+                    "deviceName": device_name,
+                    "deviceLocation": resolve_device_location(ieee_str),
+                    "temperature": temperature,
+                    "humidity": humidity,
+                    "timestamp": timestamp
+                })
             else:
-                log(f"⚠️ No readable clusters found for {ieee_str}")
+                log(f"⚠️ No valid readings received from {ieee_str}")
 
     listener = MainListener()
     app.add_listener(listener)
 
     try:
-        try:
-            await app.permit(time_s=60)
-            log("🟢 Permitting joins for 60 seconds...")
-        except Exception:
-            log("⚪ Could not explicitly permit joins (already open?).")
+        await app.permit(time_s=60)
+        log("🟢 Permitting joins for 60 seconds...")
+        await asyncio.sleep(60)
+    except Exception:
+        log("⚪ Could not explicitly permit joins.")
 
-        log(f"⏳ Waiting for {WAIT_MINUTES} minutes...")
-        await asyncio.sleep(WAIT_MINUTES * 60)
-
-        log("🕒 Waiting for sensor tasks to finish...")
-        await asyncio.gather(*listener.tasks)
-
-        if listener.readings:
-            if send_to_api:
-                await send_to_api_function(listener.readings)
-            log(f"✅ {len(listener.readings)} device readings handled.")
-        else:
-            log("⚪ No device readings collected in this cycle.")
-
-    except KeyboardInterrupt:
-        log("🛑 KeyboardInterrupt received, exiting...")
-
-    finally:
-        try:
-            await app.shutdown()
-        except Exception as e:
-            log(f"❌ Error shutting down Zigbee application: {e}")
-        log("🔁 Restarting program...")
-        os.execv(sys.executable, [sys.executable] + sys.argv)
-
-# ---- API Sender ----
-
-async def send_to_api_function(readings):
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(API_ENDPOINT, json=readings) as response:
-                if response.status in (200, 201):
-                    log(f"📤 Sent {len(readings)} readings to API successfully.")
-                else:
-                    log(f"❌ API POST failed: HTTP {response.status}")
-    except Exception as e:
-        log(f"❌ Exception during API POST: {e}")
-
-# ---- Main Entrypoint ----
+        while True:
+            await asyncio.sleep(60)
+    except KeyboardInterrupt:
+        log("🛑 KeyboardInterrupt, exiting...")
+    finally:
+        await app.shutdown()
 
 def main():
-    parser = argparse.ArgumentParser(description="ZBT-1 CLI tool for pairing and data collection.")
+    parser = argparse.ArgumentParser(description="ZBT-1 CLI tool with API sync.")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    listen_parser = subparsers.add_parser("listen", help="Listen for devices and collect data.")
-    listen_parser.add_argument("--sendToApi", action="store_true", help="Send collected data to external API.")
-
-    subparsers.add_parser("pair", help="Put ZBT-1 into pairing mode (60 seconds).")
-
+    subparsers.add_parser("pair", help="Put ZBT-1 into pairing mode.")
+    subparsers.add_parser("listen", help="Listen for sensor readings and sync with API.")
     args = parser.parse_args()
 
     initialize_database()
@@ -255,7 +258,8 @@ def main():
     if args.command == "pair":
         asyncio.run(pair_device())
     elif args.command == "listen":
-        asyncio.run(listen_for_data(send_to_api=args.sendToApi))
+        asyncio.run(read_and_sync_on_startup())
+        asyncio.run(listen_for_data())
 
 if __name__ == "__main__":
     main()

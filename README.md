@@ -1,5 +1,6 @@
 ### Zigbee Coordinator/Communication Server
 
+
 A python application that uses the ZBT-1, or other Zigbee 3.0 antenna, to pair and communicate with Zigbee 3.0 devices.
 
 Used for pairing with devices and fetching data.
@@ -22,7 +23,7 @@ source ZigbeeCoordinatorCommunicationServer/bin/activate
 #pip install --user pyserial
 
 # after activiting the venv run 
-pip install pyserial zigpy bellows tabulate
+pip install pyserial zigpy bellows tabulate aiohttp python-dateutil
 
 python3 zigbee_interaction.py pair
 python3 zigbee_interaction.py listen
