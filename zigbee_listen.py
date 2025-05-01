@@ -206,7 +206,7 @@ async def listen_for_data():
                     break
 
             if temperature is not None or humidity is not None:
-                timestamp = datetime.now(CET).isoformat()
+                timestamp = datetime.utcnow().replace(tzinfo=timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
                 conn = sqlite3.connect(DATABASE_FILE)
                 c = conn.cursor()
                 c.execute('''
